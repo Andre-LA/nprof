@@ -22,10 +22,6 @@ local colors: Color[15] = {
    MAGENTA,
 }
 
-
-## local NPROF_MAX = NPROF_MAX or 128
-local MAX <comptime> = #[NPROF_MAX]#
-
 local NProfItem = @record{
    title: stringview,
    level: uinteger,
@@ -38,8 +34,8 @@ function NProfItem:__tostring(): string
 end
 
 global NProf = @record{
-   recording_stack: vector(NProfItem), -- NProfItem[MAX],
-   recorded_stack: vector(NProfItem), -- NProfItem[MAX],
+   recording_stack: vector(NProfItem),
+   recorded_stack: vector(NProfItem),
    current_level: uinteger,
    next_recording_idx: uinteger,
    next_recorded_idx: uinteger,
@@ -48,11 +44,6 @@ global NProf = @record{
 function NProf:push(title: stringview)
    ## if PROF then
       self.current_level = self.current_level + 1
-
-      -- check(
-      --    self.next_recording_idx < MAX,
-      --    #['next_recording_idx reached MAX, use -D NPROF_MAX=number to increase the MAX; MAX: ' .. NPROF_MAX]#
-      -- )
 
       if self.next_recording_idx == #self.recording_stack then
          self.recording_stack:push({})
@@ -70,8 +61,6 @@ end
 
 function NProf:pop()
    ## if PROF then
-      --check(self.next_recording_idx > 0, 'nprof problem: there is no prof item to pop')
-
       local previous_recording_idx = self.next_recording_idx - 1
 
       if self.next_recorded_idx == #self.recorded_stack then
