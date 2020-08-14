@@ -1,0 +1,208 @@
+-- inspired by jprof: https://github.com/pfirsich/jprof
+
+require 'os'
+require 'string'
+require 'math'
+
+local colors: Color[15] = {
+   WHITE,
+   ORANGE,
+   RED,
+   GOLD,
+   LIME,
+   BLUE,
+   LIGHTGRAY,
+   PINK,
+   YELLOW,
+   GREEN,
+   RAYWHITE,
+   SKYBLUE,
+   PURPLE,
+   BEIGE,
+   MAGENTA,
+}
+
+
+## local NPROF_MAX = NPROF_MAX or 128
+local MAX <comptime> = #[NPROF_MAX]#
+
+local NProfItem = @record{
+   title: stringview,
+   level: uinteger,
+   start: number,
+   _end: number,
+}
+
+function NProfItem:__tostring(): string
+   return self.title .. ' { start = ' .. self.start .. '; _end = ' .. self._end .. '; level = ' .. self.level .. '}'
+end
+
+global NProf = @record{
+   recording_stack: vector(NProfItem), -- NProfItem[MAX],
+   recorded_stack: vector(NProfItem), -- NProfItem[MAX],
+   current_level: uinteger,
+   next_recording_idx: uinteger,
+   next_recorded_idx: uinteger,
+}
+
+function NProf:push(title: stringview)
+   ## if PROF then
+      self.current_level = self.current_level + 1
+
+      -- check(
+      --    self.next_recording_idx < MAX,
+      --    #['next_recording_idx reached MAX, use -D NPROF_MAX=number to increase the MAX; MAX: ' .. NPROF_MAX]#
+      -- )
+
+      if self.next_recording_idx == #self.recording_stack then
+         self.recording_stack:push({})
+      end
+
+      self.recording_stack[self.next_recording_idx] = {
+         title = title,
+         level = self.current_level,
+         start = os.clock(),
+      }
+
+      self.next_recording_idx = self.next_recording_idx + 1
+   ## end
+end
+
+function NProf:pop()
+   ## if PROF then
+      --check(self.next_recording_idx > 0, 'nprof problem: there is no prof item to pop')
+
+      local previous_recording_idx = self.next_recording_idx - 1
+
+      if self.next_recorded_idx == #self.recorded_stack then
+         self.recorded_stack:push({})
+      end
+
+      self.recorded_stack[self.next_recorded_idx] = self.recording_stack[previous_recording_idx]
+      self.recorded_stack[self.next_recorded_idx]._end = os.clock()
+
+      self.next_recorded_idx = self.next_recorded_idx + 1
+      self.next_recording_idx = previous_recording_idx
+      self.current_level = self.current_level - 1
+   ## end
+end
+
+function NProf:reset()
+   ## if PROF then
+      self.recording_stack:destroy()
+      self.recorded_stack:destroy()
+      self.current_level = 0
+      self.next_recording_idx = 0
+      self.next_recorded_idx = 0
+   ## end
+end
+
+function NProf:report(): string
+   ## if PROF then
+      local result: string = ""
+
+      for i = 0, < self.next_recorded_idx do
+         result = result .. tostring(self.recorded_stack[i]) .. '\n'
+      end
+
+      return result
+   ## else
+      return ''
+   ## end
+end
+
+function NProf:draw()
+   ## if PROF then
+      local rect_background = BLACK
+      rect_background.a = 175
+
+      local start_min = math.huge
+      local end_max = 0.0
+
+      for i = 0, < #self.recorded_stack do
+         local r = self.recorded_stack[i]
+         if r.start < start_min then
+            start_min = r.start
+         end
+         if r._end > end_max then
+            end_max = r._end
+         end
+      end
+
+      for i = 0, < #self.recorded_stack do
+         local item = self.recorded_stack[i]
+
+         local s = (item.start - start_min) / (end_max - start_min)
+         local e = (item._end - start_min) / (end_max - start_min)
+
+         local pos: Vector2 = {
+            x = s * Raylib.GetScreenWidth(),
+            y = Raylib.GetScreenHeight() - item.level * 24
+         }
+
+         local size: Vector2 = {
+            x = e * Raylib.GetScreenWidth() - pos.x,
+            y = 24
+         }
+
+         local p_str = tostring((e - s) * 100)
+         defer p_str:destroy() end
+
+         local percent: stringbuilder;
+         percent:write_string(p_str)
+         percent:write_string('%')
+         defer percent:destroy() end
+
+         local indentation = string.rep('  ', item.level)
+         defer indentation:destroy() end
+
+         local title_p: stringbuilder;
+         title_p:write_string(indentation)
+         title_p:write_string(item.title)
+         title_p:write_string(': ')
+         title_p:write_string(percent)
+         defer title_p:destroy() end
+
+         local color: Color = WHITE
+         ## if NPROF_COLORS then
+            color = colors[i % #colors]
+         ## end
+
+         -- draw rectangle
+         Raylib.DrawRectangleV(pos, size, rect_background)
+         Raylib.DrawRectangleLines(pos.x // 1, pos.y // 1, size.x // 1, size.y // 1, color)
+
+         -- draw rectangle texts
+         Raylib.DrawText(item.title, (pos.x + 2) // 1, (pos.y + 2) // 1, 10, color)
+         Raylib.DrawText(percent, (pos.x + 2) // 1, (pos.y + 12) // 1, 10, color)
+
+         -- draw text line
+         -- TODO: It draws out of order
+         Raylib.DrawRectangle(10, i*11, title_p.size * 7, 11, rect_background)
+         Raylib.DrawText(title_p, 10, i * 11, 10, color)
+      end
+   ## end
+end
+
+## if TEST then
+   local nprof: NProf = {}
+
+   nprof:push'first for'
+
+   local x: uinteger, y: uinteger = 0, 0
+
+   for i = 0, 3 do
+      nprof:push('second for (' .. i .. ')')
+
+      x, y = x + 1, 0
+      for j = 0, 50000000 do
+         y = y + 1
+      end
+
+      nprof:pop()
+   end
+
+   nprof:pop()
+
+   print(nprof:report())
+## end
