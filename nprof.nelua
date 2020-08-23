@@ -1,8 +1,10 @@
 -- inspired by jprof: https://github.com/pfirsich/jprof
 
+require 'vector'
 require 'os'
 require 'string'
 require 'math'
+require 'raylib'
 
 local colors: Color[15] = {
    WHITE,
