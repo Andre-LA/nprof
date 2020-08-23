@@ -179,21 +179,19 @@ end
    local nprof: NProf = {}
 
    nprof:push'first for'
+   defer nprof:pop() end
 
    local x: uinteger, y: uinteger = 0, 0
 
    for i = 0, 3 do
       nprof:push('second for (' .. i .. ')')
+      defer nprof:pop() end
 
       x, y = x + 1, 0
       for j = 0, 50000000 do
          y = y + 1
       end
-
-      nprof:pop()
    end
-
-   nprof:pop()
 
    print(nprof:report())
 ## end
