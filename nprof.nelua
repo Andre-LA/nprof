@@ -10,7 +10,7 @@ require 'raylib'
 ## NPROF.scale = NPROF.scale or {x = 1, y = 24}
 
 ## if NPROF.use_colors then
-local colors: Color[15] = {
+local colors: [15]Color = {
    WHITE,
    ORANGE,
    RED,
