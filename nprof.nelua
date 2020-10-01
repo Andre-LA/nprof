@@ -119,7 +119,7 @@ function NProf:draw()
       local end_max = 0.0
 
       for i = 0, < #self.recorded_stack do
-         local r: NProfItem* = self.recorded_stack[i]
+         local r: *NProfItem = self.recorded_stack[i]
 
          if r.start < start_min then
             start_min = r.start
@@ -130,7 +130,7 @@ function NProf:draw()
       end
 
       for i = 0, < #self.recorded_stack do
-         local item: NProfItem* = self.recorded_stack[i]
+         local item: *NProfItem = self.recorded_stack[i]
 
          local s = (item.start - start_min) / (end_max - start_min)
          local e = (item._end - start_min) / (end_max - start_min)
