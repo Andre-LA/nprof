@@ -3,13 +3,20 @@ require 'vector'
 require 'os'
 require 'string'
 require 'math'
-require 'raylib'
 
-## NPROF = NPROF or { use_colors = false, scale = {x = 1, y = 24} }
+## NPROF = NPROF or { use_colors = false, scale = {x = 1, y = 24}, draw_list = true, draw_rects  = true}
 ## NPROF.use_colors = NPROF.use_colors or false
 ## NPROF.scale = NPROF.scale or {x = 1, y = 24}
+## NPROF.draw_list = NPROF.draw_list == nil and true or NPROF.draw_list
+## NPROF.draw_rects = NPROF.draw_rects == nil and true or NPROF.draw_rects
 
-## if NPROF.use_colors then
+## local is_drawing = NPROF.draw_list or NPROF.draw_rects
+
+## if is_drawing then
+require 'raylib'
+## end
+
+## if NPROF.use_colors and is_drawing then
 local colors: [15]Color = {
    WHITE,
    ORANGE,
@@ -108,7 +115,7 @@ function NProf:report(): string
 end
 
 function NProf:draw()
-   ## if PROF then
+   ## if PROF and is_drawing then
       local scale_x <comptime> = #[math.abs(NPROF.scale.x)]#
       local scale_y <comptime> = #[NPROF.scale.y]#
 
@@ -130,28 +137,18 @@ function NProf:draw()
       end
 
       for i = 0, < #self.recorded_stack do
+         local color: Color = WHITE
+         ## if NPROF.use_colors then
+            color = colors[i % #colors]
+         ## end
+
          local item: *NProfItem = self.recorded_stack[i]
+
+         local indentation = string.rep('  ', item.level)
+         defer indentation:destroy() end
 
          local s = (item.start - start_min) / (end_max - start_min)
          local e = (item._end - start_min) / (end_max - start_min)
-
-         ## if NPROF.scale.x > 0 then
-         local pos_x =  s * (Raylib.GetScreenWidth() * scale_x)
-         local size_x = e * (Raylib.GetScreenWidth() * scale_x) - pos_x
-         ## else
-         local pos_x = (item.start - start_min) * scale_x
-         local size_x = (item._end - item.start) * scale_x
-         ## end
-
-         local pos: Vector2 = {
-            x = pos_x,
-            y = Raylib.GetScreenHeight() - item.level * scale_y
-         }
-
-         local size: Vector2 = {
-            x = size_x,
-            y = scale_y
-         }
 
          local p_str = tostring((e - s) * 100)
          defer p_str:destroy() end
@@ -161,33 +158,47 @@ function NProf:draw()
          percent:write_string('%')
          defer percent:destroy() end
 
-         local indentation = string.rep('  ', item.level)
-         defer indentation:destroy() end
+         ## if NPROF.draw_rects then
+            ## if NPROF.scale.x > 0 then
+            local pos_x =  s * (Raylib.GetScreenWidth() * scale_x)
+            local size_x = e * (Raylib.GetScreenWidth() * scale_x) - pos_x
+            ## else
+            local pos_x = (item.start - start_min) * scale_x
+            local size_x = (item._end - item.start) * scale_x
+            ## end
 
-         local title_p: stringbuilder;
-         title_p:write_string(indentation)
-         title_p:write_string(item.title)
-         title_p:write_string(': ')
-         title_p:write_string(percent)
-         defer title_p:destroy() end
+            local pos: Vector2 = {
+               x = pos_x,
+               y = Raylib.GetScreenHeight() - item.level * scale_y
+            }
 
-         local color: Color = WHITE
-         ## if NPROF.use_colors then
-            color = colors[i % #colors]
+            local size: Vector2 = {
+               x = size_x,
+               y = scale_y
+            }
+
+            -- draw rectangle
+            Raylib.DrawRectangleV(pos, size, rect_background)
+            Raylib.DrawRectangleLines(math.floor(pos.x), math.floor(pos.y), math.floor(size.x), math.floor(size.y), color)
+
+            -- draw rectangle texts
+            Raylib.DrawText(item.title, math.floor(pos.x + 2), math.floor(pos.y + 2), math.floor(scale_y//2) - 2, color)
+            Raylib.DrawText(percent, math.floor(pos.x + 2), math.floor(pos.y + math.floor(scale_y//2) +2), math.floor(scale_y/2) - 2, color)
          ## end
-
-         -- draw rectangle
-         Raylib.DrawRectangleV(pos, size, rect_background)
-         Raylib.DrawRectangleLines(math.floor(pos.x), math.floor(pos.y), math.floor(size.x), math.floor(size.y), color)
-
-         -- draw rectangle texts
-         Raylib.DrawText(item.title, math.floor(pos.x + 2), math.floor(pos.y + 2), math.floor(scale_y//2) - 2, color)
-         Raylib.DrawText(percent, math.floor(pos.x + 2), math.floor(pos.y + math.floor(scale_y//2) +2), math.floor(scale_y/2) - 2, color)
 
          -- draw text line
          -- TODO: It draws in an weird order
-         Raylib.DrawRectangle(10, i*11, title_p.size * 7, 11, rect_background)
-         Raylib.DrawText(title_p, 10, i * 11, 10, color)
+         ## if NPROF.draw_list then
+            local title_p: stringbuilder;
+            title_p:write_string(indentation)
+            title_p:write_string(item.title)
+            title_p:write_string(': ')
+            title_p:write_string(percent)
+            defer title_p:destroy() end
+
+            Raylib.DrawRectangle(10, i*11, title_p.size * 7, 11, rect_background)
+            Raylib.DrawText(title_p, 10, i * 11, 10, color)
+         ## end
       end
    ## end
 end
