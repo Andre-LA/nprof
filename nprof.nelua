@@ -4,37 +4,72 @@ require 'os'
 require 'string'
 require 'math'
 
-## NPROF = NPROF or { use_colors = false, scale = {x = 1, y = 24}, draw_list = true, draw_rects  = true}
-## NPROF.use_colors = NPROF.use_colors or false
-## NPROF.scale = NPROF.scale or {x = 1, y = 24}
-## NPROF.draw_list = NPROF.draw_list == nil and true or NPROF.draw_list
-## NPROF.draw_rects = NPROF.draw_rects == nil and true or NPROF.draw_rects
+##[[
+  NPROF = NPROF or {}
+  NPROF.use_colors = NPROF.use_colors or false
+  NPROF.scale = NPROF.scale or {x = 1, y = 24}
+  NPROF.draw_list = NPROF.draw_list == nil and true or NPROF.draw_list
+  NPROF.draw_rects = NPROF.draw_rects == nil and true or NPROF.draw_rects
+  NPROF.draw_impl = NPROF.draw_impl == nil and false or NPROF.draw_impl
 
-## local is_drawing = NPROF.draw_list or NPROF.draw_rects
+  if NPROF.draw_impl then
+    local di = NPROF.draw_impl
+    assert(di == 'raylib' or di == 'tico', "NPROF doesn't support "..di.." implementation")
+  end
+]]
+
+## local is_drawing = (NPROF.draw_list or NPROF.draw_rects) and NPROF.draw_impl
 
 ## if is_drawing then
-require 'raylib'
+  ## if NPROF.draw_impl == 'raylib' then
+    require 'raylib'
+  ## elseif NPROF.draw_impl == 'tico' then
+    require 'tico'
+  ## end
+
+  ## if NPROF.draw_impl == 'raylib' then
+    local Color = Color
+    local Vec2 = Vector2
+  ## elseif NPROF.draw_impl == 'tico' then
+    local Color = tico.Color
+    local Vec2 = tico.Vec2
+  ## end
+
+  ## if NPROF.use_colors then
+    ## if NPROF.draw_impl == 'raylib' then
+      local colors: [15]Color = {
+        WHITE,
+        ORANGE,
+        RED,
+        GOLD,
+        LIME,
+        BLUE,
+        LIGHTGRAY,
+        PINK,
+        YELLOW,
+        GREEN,
+        RAYWHITE,
+        SKYBLUE,
+        PURPLE,
+        BEIGE,
+        MAGENTA,
+      }
+    ## elseif NPROF.draw_impl == 'tico' then
+      local colors: [8]Color = {
+        tico.WHITE,
+        tico.BLACK,
+        tico.BLUE,
+        tico.RED,
+        tico.GREEN,
+        tico.GRAY,
+        tico.BROWN,
+        tico.BG,
+      }
+    ## end
+  ## end
 ## end
 
-## if NPROF.use_colors and is_drawing then
-local colors: [15]Color = {
-  WHITE,
-  ORANGE,
-  RED,
-  GOLD,
-  LIME,
-  BLUE,
-  LIGHTGRAY,
-  PINK,
-  YELLOW,
-  GREEN,
-  RAYWHITE,
-  SKYBLUE,
-  PURPLE,
-  BEIGE,
-  MAGENTA,
-}
-## end
+
 
 local NProfItem = @record{
   title: stringview,
@@ -119,7 +154,12 @@ function NProf:draw()
     local scale_x <comptime> = #[math.abs(NPROF.scale.x)]#
     local scale_y <comptime> = #[NPROF.scale.y]#
 
-    local rect_background = BLACK
+    ## if NPROF.draw_impl == 'raylib' then
+      local rect_background = BLACK
+    ## elseif NPROF.draw_impl == 'tico' then
+      local rect_background = tico.BLACK
+    ## end
+
     rect_background.a = 175
 
     local start_min = math.huge
@@ -137,7 +177,12 @@ function NProf:draw()
     end
 
     for i = 0, < #self.recorded_stack do
-      local color: Color = WHITE
+      ## if NPROF.draw_impl == 'raylib' then
+        local color: Color = WHITE
+      ## elseif NPROF.draw_impl == 'tico' then
+        local color: Color = tico.WHITE
+      ## end
+
       ## if NPROF.use_colors then
         color = colors[i % #colors]
       ## end
@@ -159,31 +204,50 @@ function NProf:draw()
       defer percent:destroy() end
 
       ## if NPROF.draw_rects then
-        ## if NPROF.scale.x > 0 then
-        local pos_x =  s * (Raylib.GetScreenWidth() * scale_x)
-        local size_x = e * (Raylib.GetScreenWidth() * scale_x) - pos_x
-        ## else
-        local pos_x = (item.start - start_min) * scale_x
-        local size_x = (item._end - item.start) * scale_x
+        ## if NPROF.draw_impl == 'raylib' then
+          local screen_width = Raylib.GetScreenWidth()
+          local screen_height = Raylib.GetScreenHeight()
+        ## elseif NPROF.draw_impl == 'tico' then
+          local screen_width = tico.window_get_width()
+          local screen_height = tico.window_get_height()
         ## end
 
-        local pos: Vector2 = {
+        ## if NPROF.scale.x > 0 then
+          local pos_x =  s * (screen_width * scale_x)
+          local size_x = e * (screen_width * scale_x) - pos_x
+        ## else
+          local pos_x = (item.start - start_min) * scale_x
+          local size_x = (item._end - item.start) * scale_x
+        ## end
+
+        local pos: Vec2 = {
           x = pos_x,
-          y = Raylib.GetScreenHeight() - item.level * scale_y
+          y = screen_height - item.level * scale_y
         }
 
-        local size: Vector2 = {
+        local size: Vec2 = {
           x = size_x,
           y = scale_y
         }
 
-        -- draw rectangle
-        Raylib.DrawRectangleV(pos, size, rect_background)
-        Raylib.DrawRectangleLines(math.floor(pos.x), math.floor(pos.y), math.floor(size.x), math.floor(size.y), color)
 
-        -- draw rectangle texts
-        Raylib.DrawText(item.title, math.floor(pos.x + 2), math.floor(pos.y + 2), math.floor(scale_y//2) - 2, color)
-        Raylib.DrawText(percent, math.floor(pos.x + 2), math.floor(pos.y + math.floor(scale_y//2) +2), math.floor(scale_y/2) - 2, color)
+        ## if NPROF.draw_impl == 'raylib' then
+          -- draw rectangle
+          Raylib.DrawRectangleV(pos, size, rect_background)
+          Raylib.DrawRectangleLines(math.floor(pos.x), math.floor(pos.y), math.floor(size.x), math.floor(size.y), color)
+
+          -- draw rectangle texts
+          Raylib.DrawText(item.title, math.floor(pos.x + 2), math.floor(pos.y + 2), math.floor(scale_y//2) - 2, color)
+          Raylib.DrawText(percent, math.floor(pos.x + 2), math.floor(pos.y + math.floor(scale_y//2) +2), math.floor(scale_y/2) - 2, color)
+        ## elseif NPROF.draw_impl == 'tico' then
+          -- draw rectangle
+          tico.graphics_fill_rectangle(pos.x, pos.y, size.x, size.y, rect_background)
+          tico.graphics_draw_rectangle(pos.x, pos.y, math.ifloor(size.x), math.ifloor(size.y), color)
+
+          -- draw rectangle texts
+          tico.graphics_draw_text(item.title, math.ifloor(pos.x + 2), math.ifloor(pos.y + 2), color)
+          tico.graphics_draw_text(percent, math.ifloor(pos.x + 2), math.ifloor(pos.y + math.ifloor(scale_y/2) + 2), color)
+        ## end
       ## end
 
       -- draw text line
@@ -196,8 +260,13 @@ function NProf:draw()
         title_p:write_string(percent)
         defer title_p:destroy() end
 
-        Raylib.DrawRectangle(10, i*11, title_p.size * 7, 11, rect_background)
-        Raylib.DrawText(title_p, 10, i * 11, 10, color)
+        ## if NPROF.draw_impl == 'raylib' then
+          Raylib.DrawRectangle(10, i*11, title_p.size * 7, 11, rect_background)
+          Raylib.DrawText(title_p, 10, i * 11, 10, color)
+        ## elseif NPROF.draw_impl == 'tico' then
+          tico.graphics_fill_rectangle(10, i*11, title_p.size * 7, 11, rect_background)
+          tico.graphics_draw_text(title_p, 10, i * 11, color)
+        ## end
       ## end
     end
   ## end
