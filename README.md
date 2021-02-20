@@ -1,14 +1,14 @@
 # NProf
 
-Very basic profiler, also supports drawing using either [Raylib-nelua](https://github.com/Andre-LA/raylib-nelua) or [tico-nelua](https://github.com/Andre-LA/tico-nelua).
+Very basic profiler, supports drawing using either [Raylib-nelua](https://github.com/Andre-LA/raylib-nelua) or [tico-nelua](https://github.com/Andre-LA/tico-nelua).
 Inspired by [JProf](https://github.com/pfirsich/jprof)
 
 ## Dependencies
 There is no external dependencies unless when drawing is enabled, which will use an _drawing implementation_ specified by
  `NPROF.draw_impl`, which must be either `"raylib"` or `"tico"`; the external dependency is the specified implementation:
 
-- if `NPROF.draw_impl` is `"raylib"`: [Raylib-nelua](https://github.com/Andre-LA/raylib-nelua)
-- if `NPROF.draw_impl` is `"tico"`: [tico-nelua](https://github.com/Andre-LA/tico-nelua)
+- `NPROF.draw_impl` is `"raylib"`: [Raylib-nelua](https://github.com/Andre-LA/raylib-nelua)
+- `NPROF.draw_impl` is `"tico"`: [tico-nelua](https://github.com/Andre-LA/tico-nelua)
 
 ## Compile-time options:
 
@@ -21,10 +21,9 @@ There is no external dependencies unless when drawing is enabled, which will use
     * `draw_impl`: `false` by default; it must be either `"raylib"` or `"tico"`, it  specifies what drawing implementation should be used.
 * `TEST`: runs a basic test, only useful for nprof development.
 
-**NOTE: When both `NPROF.draw_list` and `NPROF.draw_rects` are false, no _drawing implementation_ is required**
+NOTE: When both `NPROF.draw_list` and `NPROF.draw_rects` are false, no _drawing implementation_ is required
 
 ## How to use
-
 Check the [Rotor raylib example](https://gitlab.com/Andre-LA/rotor-nelua/-/blob/master/examples/raylib.nelua)
 
 Preview:  

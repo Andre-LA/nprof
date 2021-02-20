@@ -1,11 +1,16 @@
--- inspired by jprof: https://github.com/pfirsich/jprof
+--[[ This Source Code Form is subject to the terms of the Mozilla Public
+     License, v. 2.0. If a copy of the MPL was not distributed with this
+     file, You can obtain one at https://mozilla.org/MPL/2.0/. ]]
+
+-- this library is inspired by jprof: https://github.com/pfirsich/jprof
 require 'vector'
 require 'os'
 require 'string'
 require 'math'
+require 'stringbuilder'
 
 ##[[
-  NPROF = NPROF or {}
+  local NPROF = NPROF or {}
   NPROF.use_colors = NPROF.use_colors or false
   NPROF.scale = NPROF.scale or {x = 1, y = 24}
   NPROF.draw_list = NPROF.draw_list == nil and true or NPROF.draw_list
@@ -14,30 +19,43 @@ require 'math'
 
   if NPROF.draw_impl then
     local di = NPROF.draw_impl
-    assert(di == 'raylib' or di == 'tico', "NPROF doesn't support "..di.." implementation")
+    staticassert(di == 'raylib' or di == 'nene', "NPROF doesn't support "..di.." implementation")
   end
 ]]
 
+-- [[ cross-library abstractions [[
 ## local is_drawing = (NPROF.draw_list or NPROF.draw_rects) and NPROF.draw_impl
 
 ## if is_drawing then
+  -- require
   ## if NPROF.draw_impl == 'raylib' then
     require 'raylib'
-  ## elseif NPROF.draw_impl == 'tico' then
-    require 'tico'
+  ## elseif NPROF.draw_impl == 'nene' then
+    require 'nene'
   ## end
 
+  -- import types
   ## if NPROF.draw_impl == 'raylib' then
     local Color = Color
     local Vec2 = Vector2
-  ## elseif NPROF.draw_impl == 'tico' then
-    local Color = tico.Color
-    local Vec2 = tico.Vec2
+  ## elseif NPROF.draw_impl == 'nene' then
+    local Color = Nene.Color
+    local Vec2 = Nene.Math.Vec2
   ## end
 
+  -- default colors
+  ## if NPROF.draw_impl == 'raylib' then
+    local bg_color: Color <const> = BLACK
+    local default_color: Color <const> = WHITE
+  ## elseif NPROF.draw_impl == 'nene' then
+    local bg_color: Color <const> = Nene.Palette.black
+    local default_color: Color <const> = Nene.Palette.white
+  ## end
+
+  -- color palette
   ## if NPROF.use_colors then
     ## if NPROF.draw_impl == 'raylib' then
-      local colors: [15]Color = {
+      local colors: [15]Color <const> = {
         WHITE,
         ORANGE,
         RED,
@@ -54,32 +72,94 @@ require 'math'
         BEIGE,
         MAGENTA,
       }
-    ## elseif NPROF.draw_impl == 'tico' then
-      local colors: [8]Color = {
-        tico.WHITE,
-        tico.BLACK,
-        tico.BLUE,
-        tico.RED,
-        tico.GREEN,
-        tico.GRAY,
-        tico.BROWN,
-        tico.BG,
+    ## elseif NPROF.draw_impl == 'nene' then
+      local colors: [4]Color <const> = {
+        Nene.Palette.white,
+        Nene.Palette.red,
+        Nene.Palette.green,
+        Nene.Palette.yellow,
       }
     ## end
   ## end
 ## end
 
+##[[
+local draw_state = concept(function(state_attr)
+  local state_type = state_attr.type
+  if NPROF.draw_impl == 'nene' then
+    return state_type.is_nenestate, 'a Nene.CoreState value must be given'
+  else
+    return state_type.is_niltype
+  end
+end)
+]]
 
+local function draw_rectangle(ext_state: #[draw_state]#, pos: Vec2, size: Vec2, bg_color: Color, outline_color: facultative(Color))
+  local px, py, sx, sy = math.ifloor(pos.x), math.ifloor(pos.y), math.ifloor(size.x), math.ifloor(size.y)
+
+  ## if NPROF.draw_impl == 'raylib' then
+    Raylib.DrawRectangleV(pos, size, bg_color)
+    ## if not outline_color.type.is_niltype then
+      Raylib.DrawRectangleLines(px, py, sx, sy, outline_color)
+    ## end
+
+  ## elseif NPROF.draw_impl == 'nene' then
+    ext_state:render_draw_rect({px, py, sx, sy}, false, bg_color)
+    ## if not outline_color.type.is_niltype then
+      ext_state:render_draw_rect({px, py, sx, sy}, true, outline_color)
+    ## end
+  ## end
+end
+
+local function draw_text(ext_state: #[draw_state]#, text: string, pos: Vec2, color: Color)
+  local px, py = math.ifloor(pos.x), math.ifloor(pos.y)
+
+  ## if NPROF.draw_impl == 'raylib' then
+    Raylib.DrawText(text, px, py, 10, color)
+  ## elseif NPROF.draw_impl == 'nene' then
+    local text_texture = Nene.TextTexture.new(ext_state, text, color)
+    text_texture:draw(ext_state, pos, Nene.Palette.white)
+    text_texture:free()
+  ## end
+end
+
+local function get_screen_dimensions(ext_state: #[draw_state]#): (integer, integer)
+  ## if NPROF.draw_impl == 'raylib' then
+    return Raylib.GetScreenWidth(), Raylib.GetScreenHeight()
+  ## elseif NPROF.draw_impl == 'nene' then
+    local screen_size = ext_state:get_render_target_dimensions()
+    return math.ifloor(screen_size.x), math.ifloor(screen_size.y)
+  ## end
+end
+-- ]] cross-library abstractions ]]
 
 local NProfItem = @record{
-  title: stringview,
+  title: string,
   level: uinteger,
   start: number,
   _end: number,
 }
 
 function NProfItem:__tostring(): string
-  return self.title .. ' { start = ' .. self.start .. '; _end = ' .. self._end .. '; level = ' .. self.level .. '}'
+  ## if PROF then
+    local builder: stringbuilder;
+
+    builder:write_string(tostring(self.title))
+    builder:write_string(' { start = ')
+    builder:write_string(tostring(self.start))
+    builder:write_string('; _end = ')
+    builder:write_string(tostring(self._end))
+    builder:write_string('; level = ')
+    builder:write_string(tostring(self.level))
+    builder:write_string('}')
+
+    local result = builder:promote()
+    builder:destroy()
+
+    return result
+  ## else
+    return ''
+  ## end
 end
 
 global NProf = @record{
@@ -90,7 +170,7 @@ global NProf = @record{
   next_recorded_idx: uinteger,
 }
 
-function NProf:push(title: stringview)
+function NProf:push(title: string)
   ## if PROF then
     self.current_level = self.current_level + 1
 
@@ -137,11 +217,15 @@ end
 
 function NProf:report(): string
   ## if PROF then
-    local result: string = ""
+    local builder: stringbuilder;
 
     for i = 0, < self.next_recorded_idx do
-      result = result .. tostring(self.recorded_stack[i]) .. '\n'
+      builder:write_string(tostring(self.recorded_stack[i]))
+      builder:write_string('\n')
     end
+
+    local result = builder:promote()
+    builder:destroy()
 
     return result
   ## else
@@ -149,24 +233,19 @@ function NProf:report(): string
   ## end
 end
 
-function NProf:draw()
+function NProf:draw(external_state: #[draw_state]#)
   ## if PROF and is_drawing then
-    local scale_x <comptime> = #[math.abs(NPROF.scale.x)]#
-    local scale_y <comptime> = #[NPROF.scale.y]#
+    local scale_x: integer <comptime> = #[math.abs(NPROF.scale.x)]#
+    local scale_y: integer <comptime> = #[NPROF.scale.y]#
 
-    ## if NPROF.draw_impl == 'raylib' then
-      local rect_background = BLACK
-    ## elseif NPROF.draw_impl == 'tico' then
-      local rect_background = tico.BLACK
-    ## end
-
+    local rect_background = bg_color
     rect_background.a = 175
 
     local start_min = math.huge
     local end_max = 0.0
 
     for i = 0, < #self.recorded_stack do
-      local r: *NProfItem = self.recorded_stack[i]
+      local r = self.recorded_stack[i]
 
       if r.start < start_min then
         start_min = r.start
@@ -177,17 +256,13 @@ function NProf:draw()
     end
 
     for i = 0, < #self.recorded_stack do
-      ## if NPROF.draw_impl == 'raylib' then
-        local color: Color = WHITE
-      ## elseif NPROF.draw_impl == 'tico' then
-        local color: Color = tico.WHITE
-      ## end
+      local color = default_color
 
       ## if NPROF.use_colors then
         color = colors[i % #colors]
       ## end
 
-      local item: *NProfItem = self.recorded_stack[i]
+      local item = self.recorded_stack[i]
 
       local indentation = string.rep('  ', item.level)
       defer indentation:destroy() end
@@ -198,75 +273,43 @@ function NProf:draw()
       local p_str = tostring((e - s) * 100)
       defer p_str:destroy() end
 
-      local percent: stringbuilder;
-      percent:write_string(p_str)
-      percent:write_string('%')
-      defer percent:destroy() end
+      local percent_sb: stringbuilder;
+      percent_sb:write_string(p_str)
+      percent_sb:write_string('%')
+      local percent = percent_sb:promote()
+      percent_sb:destroy()
 
       ## if NPROF.draw_rects then
-        ## if NPROF.draw_impl == 'raylib' then
-          local screen_width = Raylib.GetScreenWidth()
-          local screen_height = Raylib.GetScreenHeight()
-        ## elseif NPROF.draw_impl == 'tico' then
-          local screen_width = tico.window_get_width()
-          local screen_height = tico.window_get_height()
-        ## end
+        local screen_width, screen_height = get_screen_dimensions(external_state)
+
+        local pos_x = (item.start - start_min) * scale_x
+        local size_x = (item._end - item.start) * scale_x
 
         ## if NPROF.scale.x > 0 then
-          local pos_x =  s * (screen_width * scale_x)
-          local size_x = e * (screen_width * scale_x) - pos_x
-        ## else
-          local pos_x = (item.start - start_min) * scale_x
-          local size_x = (item._end - item.start) * scale_x
+          pos_x = s * (screen_width * scale_x)
+          size_x = e * (screen_width * scale_x) - pos_x
         ## end
 
-        local pos: Vec2 = {
-          x = pos_x,
-          y = screen_height - item.level * scale_y
-        }
+        local pos: Vec2 = { x = pos_x, y = screen_height - item.level * scale_y }
+        local size: Vec2 = { x = size_x, y = scale_y }
 
-        local size: Vec2 = {
-          x = size_x,
-          y = scale_y
-        }
-
-
-        ## if NPROF.draw_impl == 'raylib' then
-          -- draw rectangle
-          Raylib.DrawRectangleV(pos, size, rect_background)
-          Raylib.DrawRectangleLines(math.floor(pos.x), math.floor(pos.y), math.floor(size.x), math.floor(size.y), color)
-
-          -- draw rectangle texts
-          Raylib.DrawText(item.title, math.floor(pos.x + 2), math.floor(pos.y + 2), math.floor(scale_y//2) - 2, color)
-          Raylib.DrawText(percent, math.floor(pos.x + 2), math.floor(pos.y + math.floor(scale_y//2) +2), math.floor(scale_y/2) - 2, color)
-        ## elseif NPROF.draw_impl == 'tico' then
-          -- draw rectangle
-          tico.graphics_fill_rectangle(pos.x, pos.y, size.x, size.y, rect_background)
-          tico.graphics_draw_rectangle(pos.x, pos.y, math.ifloor(size.x), math.ifloor(size.y), color)
-
-          -- draw rectangle texts
-          tico.graphics_draw_text(item.title, math.ifloor(pos.x + 2), math.ifloor(pos.y + 2), color)
-          tico.graphics_draw_text(percent, math.ifloor(pos.x + 2), math.ifloor(pos.y + math.ifloor(scale_y/2) + 2), color)
-        ## end
+        draw_rectangle(external_state, pos, size, rect_background, color)
+        draw_text(external_state, item.title, {pos.x + 2, pos.y + 2}, color)
+        draw_text(external_state, percent, {pos.x + 2, pos.y + scale_y // 2 + 2 }, color)
       ## end
 
       -- draw text line
-      -- TODO: It draws in an weird order
       ## if NPROF.draw_list then
-        local title_p: stringbuilder;
-        title_p:write_string(indentation)
-        title_p:write_string(item.title)
-        title_p:write_string(': ')
-        title_p:write_string(percent)
-        defer title_p:destroy() end
+        local title_p_sb: stringbuilder;
+        title_p_sb:write_string(indentation)
+        title_p_sb:write_string(item.title)
+        title_p_sb:write_string(': ')
+        title_p_sb:write_string(percent)
+        local title_p = title_p_sb:promote()
+        title_p_sb:destroy()
 
-        ## if NPROF.draw_impl == 'raylib' then
-          Raylib.DrawRectangle(10, i*11, title_p.size * 7, 11, rect_background)
-          Raylib.DrawText(title_p, 10, i * 11, 10, color)
-        ## elseif NPROF.draw_impl == 'tico' then
-          tico.graphics_fill_rectangle(10, i*11, title_p.size * 7, 11, rect_background)
-          tico.graphics_draw_text(title_p, 10, i * 11, color)
-        ## end
+        draw_rectangle(external_state, {10, i * 13}, {title_p.size * 7, 13}, rect_background)
+        draw_text(external_state, title_p, {10, i * 13}, color)
       ## end
     end
   ## end
@@ -281,7 +324,14 @@ end
   local x: uinteger, y: uinteger = 0, 0
 
   for i = 0, 3 do
-    nprof:push('second for (' .. i .. ')')
+    local sb: stringbuilder;
+    sb:write_string('second for (')
+    sb:write_string(i)
+    sb:write_string(')')
+    local s = sb:promote()
+    sb:destroy()
+
+    nprof:push(s)
     defer nprof:pop() end
 
     x, y = x + 1, 0
